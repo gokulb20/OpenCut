@@ -23,11 +23,13 @@ import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { colors } from "@/data/colors/solid";
 import { patternCraftGradients } from "@/data/colors/pattern-craft";
-import { PipetteIcon, PlusIcon } from "lucide-react";
-import { useMemo, memo, useCallback } from "react";
+import { PipetteIcon, PlusIcon, EyeIcon, EyeOffIcon, CheckIcon, XIcon } from "lucide-react";
+import { useMemo, memo, useCallback, useState } from "react";
 import { syntaxUIGradients } from "@/data/colors/syntax-ui";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
+import { useAISettingsStore, AI_PROVIDERS } from "@/stores/ai-settings-store";
 
 export function SettingsView() {
   return <ProjectSettingsTabs />;
@@ -70,6 +72,15 @@ function ProjectSettingsTabs() {
                   <PlusIcon className="" />
                 </Button>
               </div> */}
+            </div>
+          ),
+        },
+        {
+          value: "ai-settings",
+          label: "AI Settings",
+          content: (
+            <div className="p-5 overflow-y-auto h-full">
+              <AISettingsView />
             </div>
           ),
         },
@@ -327,6 +338,191 @@ function BackgroundView() {
           />
         </div>
       </PropertyGroup>
+    </div>
+  );
+}
+
+// ============================================================================
+// AI Settings View - Configure API keys for AI-powered editing
+// ============================================================================
+
+function APIKeyInput({
+  provider,
+  label,
+  description,
+}: {
+  provider: string;
+  label: string;
+  description: string;
+}) {
+  const { getApiKey, setApiKey, removeApiKey, hasApiKey } = useAISettingsStore();
+  const [showKey, setShowKey] = useState(false);
+  const [inputValue, setInputValue] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
+
+  const isConfigured = hasApiKey(provider);
+  const currentKey = getApiKey(provider) || "";
+
+  const handleSave = () => {
+    if (inputValue.trim()) {
+      setApiKey(provider, inputValue.trim());
+      setInputValue("");
+      setIsEditing(false);
+    }
+  };
+
+  const handleRemove = () => {
+    removeApiKey(provider);
+    setInputValue("");
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    setInputValue("");
+    setIsEditing(false);
+  };
+
+  const maskedKey = currentKey ? `${currentKey.substring(0, 8)}...${currentKey.substring(currentKey.length - 4)}` : "";
+
+  return (
+    <div className="flex flex-col gap-2 p-3 rounded-md bg-panel-accent/50 border border-foreground/10">
+      <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-sm font-medium">{label}</span>
+          <span className="text-xs text-muted-foreground">{description}</span>
+        </div>
+        {isConfigured && !isEditing && (
+          <CheckIcon className="size-4 text-green-500" />
+        )}
+      </div>
+
+      {isEditing ? (
+        <div className="flex flex-col gap-2">
+          <div className="relative">
+            <Input
+              type={showKey ? "text" : "password"}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              placeholder="Enter API key..."
+              className="pr-10 bg-panel text-sm"
+            />
+            <button
+              type="button"
+              onClick={() => setShowKey(!showKey)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              {showKey ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={handleSave} className="flex-1">
+              Save
+            </Button>
+            <Button size="sm" variant="outline" onClick={handleCancel}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : isConfigured ? (
+        <div className="flex items-center gap-2">
+          <code className="text-xs bg-panel px-2 py-1 rounded flex-1 text-muted-foreground">
+            {showKey ? currentKey : maskedKey}
+          </code>
+          <button
+            type="button"
+            onClick={() => setShowKey(!showKey)}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            {showKey ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
+          </button>
+          <Button size="sm" variant="outline" onClick={() => setIsEditing(true)}>
+            Edit
+          </Button>
+          <Button size="sm" variant="destructive" onClick={handleRemove}>
+            <XIcon className="size-3" />
+          </Button>
+        </div>
+      ) : (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setIsEditing(true)}
+          className="w-full"
+        >
+          <PlusIcon className="size-4 mr-1" />
+          Add API Key
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function AISettingsView() {
+  const videoProviders = AI_PROVIDERS.filter((p) => p.category === "video");
+  const musicProviders = AI_PROVIDERS.filter((p) => p.category === "music");
+  const voiceProviders = AI_PROVIDERS.filter((p) => p.category === "voice");
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1 mb-2">
+        <h3 className="text-sm font-medium">AI API Keys</h3>
+        <p className="text-xs text-muted-foreground">
+          Configure API keys for AI-powered video generation, music, and voiceovers.
+          Keys are stored locally in your browser.
+        </p>
+      </div>
+
+      <PropertyGroup title="Video Generation" defaultExpanded={true}>
+        <div className="flex flex-col gap-3">
+          {videoProviders.map((provider) => (
+            <APIKeyInput
+              key={provider.id}
+              provider={provider.id}
+              label={provider.name}
+              description={provider.description}
+            />
+          ))}
+        </div>
+      </PropertyGroup>
+
+      <PropertyGroup title="Music Generation" defaultExpanded={false}>
+        <div className="flex flex-col gap-3">
+          {musicProviders.map((provider) => (
+            <APIKeyInput
+              key={provider.id}
+              provider={provider.id}
+              label={provider.name}
+              description={provider.description}
+            />
+          ))}
+        </div>
+      </PropertyGroup>
+
+      <PropertyGroup title="Voice Generation" defaultExpanded={false}>
+        <div className="flex flex-col gap-3">
+          {voiceProviders.map((provider) => (
+            <APIKeyInput
+              key={provider.id}
+              provider={provider.id}
+              label={provider.name}
+              description={provider.description}
+            />
+          ))}
+        </div>
+      </PropertyGroup>
+
+      <Separator className="my-2" />
+
+      <div className="flex flex-col gap-2 text-xs text-muted-foreground">
+        <p>
+          <strong>How it works:</strong> Claude Code can use these API keys to generate
+          videos, music, and voiceovers for your project. Just ask Claude to create content!
+        </p>
+        <p>
+          <strong>Example:</strong> &quot;Generate a 5-second video of a sunset over the ocean
+          and add upbeat background music&quot;
+        </p>
+      </div>
     </div>
   );
 }
