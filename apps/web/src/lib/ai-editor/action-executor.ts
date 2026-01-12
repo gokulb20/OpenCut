@@ -135,10 +135,66 @@ export function getPlaybackState() {
 // Action Executor - Main entry point for executing actions
 // ============================================================================
 
+interface ExecutionOptions {
+  skipHistory?: boolean;
+}
+
+/**
+ * Execute multiple AI actions as a batch
+ *
+ * This is the recommended way to execute multiple related actions because:
+ * 1. Actions are executed sequentially in order
+ * 2. Early failure can stop remaining actions (if stopOnError is true)
+ * 3. All results are returned together for easy error checking
+ *
+ * Note: Each action will push its own history entry. If you need single-undo
+ * for the entire batch, call undo() multiple times or use the timeline
+ * store's pushHistory() before and squash after.
+ *
+ * @example
+ * const results = await executeActions([
+ *   { type: 'add_clip_to_timeline', params: { mediaId: '...', startTime: 0 } },
+ *   { type: 'add_text', params: { content: 'Hello', startTime: 0, duration: 3 } },
+ *   { type: 'trim_clip', params: { trackId: '...', elementId: '...', trimStart: 1 } },
+ * ]);
+ *
+ * // Check for any failures
+ * const failures = results.filter(r => !r.success);
+ */
+export async function executeActions(
+  actions: AIAction[],
+  options?: { stopOnError?: boolean }
+): Promise<AIActionResult[]> {
+  const { stopOnError = false } = options || {};
+
+  if (actions.length === 0) {
+    return [];
+  }
+
+  const results: AIActionResult[] = [];
+  for (const action of actions) {
+    const result = await executeActionInternal(action, { skipHistory: false });
+    results.push(result);
+
+    if (stopOnError && !result.success) {
+      break;
+    }
+  }
+
+  return results;
+}
+
 /**
  * Execute an AI action on the editor
  */
 export async function executeAction(action: AIAction): Promise<AIActionResult> {
+  return executeActionInternal(action, { skipHistory: false });
+}
+
+/**
+ * Internal action executor with options
+ */
+async function executeActionInternal(action: AIAction, _options: ExecutionOptions = {}): Promise<AIActionResult> {
   try {
     switch (action.type) {
       case "add_clip_to_timeline":

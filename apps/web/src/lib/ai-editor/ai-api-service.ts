@@ -13,6 +13,7 @@
 
 import { useMediaStore } from "@/stores/media-store";
 import { useProjectStore } from "@/stores/project-store";
+import { useAISettingsStore } from "@/stores/ai-settings-store";
 
 // ============================================================================
 // Types
@@ -53,10 +54,8 @@ export interface GenerationResult {
 }
 
 // ============================================================================
-// API Key Management
+// API Key Management (uses Zustand store for caching and persistence)
 // ============================================================================
-
-const API_KEY_STORAGE_KEY = "opencut-ai-api-keys";
 
 export interface AIApiKeys {
   gemini?: string;
@@ -72,41 +71,37 @@ export interface AIApiKeys {
 }
 
 /**
- * Get stored API keys from localStorage
+ * Get stored API keys (uses cached Zustand store)
  */
 export function getApiKeys(): AIApiKeys {
-  if (typeof window === "undefined") return {};
-  try {
-    const stored = localStorage.getItem(API_KEY_STORAGE_KEY);
-    return stored ? JSON.parse(stored) : {};
-  } catch {
-    return {};
-  }
+  return useAISettingsStore.getState().apiKeys;
 }
 
 /**
- * Save API keys to localStorage
+ * Save API keys (backwards compatibility - use setApiKey instead)
+ * @deprecated Use setApiKey for individual keys
  */
 export function saveApiKeys(keys: AIApiKeys): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(API_KEY_STORAGE_KEY, JSON.stringify(keys));
+  const store = useAISettingsStore.getState();
+  for (const [provider, key] of Object.entries(keys)) {
+    if (key) {
+      store.setApiKey(provider, key);
+    }
+  }
 }
 
 /**
  * Set a specific API key
  */
 export function setApiKey(provider: keyof AIApiKeys, key: string): void {
-  const keys = getApiKeys();
-  keys[provider] = key;
-  saveApiKeys(keys);
+  useAISettingsStore.getState().setApiKey(provider, key);
 }
 
 /**
  * Check if a provider is configured
  */
 export function hasApiKey(provider: keyof AIApiKeys): boolean {
-  const keys = getApiKeys();
-  return Boolean(keys[provider]?.trim());
+  return useAISettingsStore.getState().hasApiKey(provider);
 }
 
 // ============================================================================
@@ -681,11 +676,24 @@ async function importGeneratedMedia(
   return mediaFile.id;
 }
 
+/**
+ * Calculate delay with exponential backoff
+ * Starts at 2s, doubles each attempt, caps at 30s
+ */
+function getBackoffDelay(attempt: number): number {
+  const baseDelay = 2000; // 2 seconds
+  const maxDelay = 30000; // 30 seconds
+  const delay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
+  // Add some jitter (±10%) to prevent thundering herd
+  const jitter = delay * 0.1 * (Math.random() * 2 - 1);
+  return Math.round(delay + jitter);
+}
+
 async function pollForCompletion(
   provider: string,
   taskId: string,
   apiKey: string,
-  maxAttempts = 60
+  maxAttempts = 30 // Reduced since we're using exponential backoff
 ): Promise<GenerationResult> {
   const pollUrls: Record<string, string> = {
     kling: `https://api.klingai.com/v1/videos/text-to-video/${taskId}`,
@@ -697,26 +705,33 @@ async function pollForCompletion(
   }
 
   for (let i = 0; i < maxAttempts; i++) {
-    await new Promise((resolve) => setTimeout(resolve, 5000)); // Wait 5 seconds
+    // Exponential backoff: 2s, 4s, 8s, 16s, 30s, 30s...
+    const delay = getBackoffDelay(i);
+    await new Promise((resolve) => setTimeout(resolve, delay));
 
-    const response = await fetch(pollUrl, {
-      headers: { Authorization: `Bearer ${apiKey}` },
-    });
+    try {
+      const response = await fetch(pollUrl, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
 
-    if (!response.ok) continue;
+      if (!response.ok) continue;
 
-    const data = await response.json();
+      const data = await response.json();
 
-    if (data.status === "completed" || data.status === "succeeded") {
-      const videoUrl = data.video_url || data.output?.video_url;
-      if (videoUrl) {
-        const mediaId = await importGeneratedMedia(videoUrl, `${provider} video`, "video");
-        return { success: true, mediaId, url: videoUrl };
+      if (data.status === "completed" || data.status === "succeeded") {
+        const videoUrl = data.video_url || data.output?.video_url;
+        if (videoUrl) {
+          const mediaId = await importGeneratedMedia(videoUrl, `${provider} video`, "video");
+          return { success: true, mediaId, url: videoUrl };
+        }
       }
-    }
 
-    if (data.status === "failed") {
-      return { success: false, error: data.error || "Generation failed" };
+      if (data.status === "failed") {
+        return { success: false, error: data.error || "Generation failed" };
+      }
+    } catch {
+      // Network error, continue polling
+      continue;
     }
   }
 
@@ -726,29 +741,36 @@ async function pollForCompletion(
 async function pollGeminiOperation(
   operationName: string,
   apiKey: string,
-  maxAttempts = 60
+  maxAttempts = 30 // Reduced since we're using exponential backoff
 ): Promise<GenerationResult> {
   for (let i = 0; i < maxAttempts; i++) {
-    await new Promise((resolve) => setTimeout(resolve, 5000));
+    // Exponential backoff: 2s, 4s, 8s, 16s, 30s, 30s...
+    const delay = getBackoffDelay(i);
+    await new Promise((resolve) => setTimeout(resolve, delay));
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/${operationName}?key=${apiKey}`
-    );
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/${operationName}?key=${apiKey}`
+      );
 
-    if (!response.ok) continue;
+      if (!response.ok) continue;
 
-    const data = await response.json();
+      const data = await response.json();
 
-    if (data.done) {
-      if (data.error) {
-        return { success: false, error: data.error.message };
+      if (data.done) {
+        if (data.error) {
+          return { success: false, error: data.error.message };
+        }
+
+        const videoUrl = data.response?.generatedVideos?.[0]?.video?.uri;
+        if (videoUrl) {
+          const mediaId = await importGeneratedMedia(videoUrl, "Gemini video", "video");
+          return { success: true, mediaId, url: videoUrl };
+        }
       }
-
-      const videoUrl = data.response?.generatedVideos?.[0]?.video?.uri;
-      if (videoUrl) {
-        const mediaId = await importGeneratedMedia(videoUrl, "Gemini video", "video");
-        return { success: true, mediaId, url: videoUrl };
-      }
+    } catch {
+      // Network error, continue polling
+      continue;
     }
   }
 

@@ -306,6 +306,101 @@ const keys = getApiKeys();
 - `openai` - OpenAI TTS
 - `elevenlabs` - ElevenLabs
 
+### Reel Creation System (Recommended)
+
+The high-level reel creation system is the easiest way to build videos. Use templates for common formats or create custom scripts.
+
+```typescript
+import { createReel, getTemplateIds, REEL_TEMPLATES, executeScript } from '@/lib/ai-editor';
+
+// See available templates
+const templates = getTemplateIds();
+// ["hook-content-cta", "before-after", "listicle-5", "listicle-3",
+//  "story-arc", "tutorial", "product-showcase", "quote", "announcement", "simple"]
+
+// Create a reel using a template
+const result = await createReel({
+  template: "hook-content-cta",
+  name: "Product Launch",
+  clips: [
+    { text: "You NEED to see this!" },           // Hook
+    { mediaId: "product-demo-123" },             // Content
+    { text: "Link in bio!" }                     // CTA
+  ],
+  music: { generate: "upbeat tech, energetic" }
+});
+
+// Or use a custom script for full control
+const script: VideoScript = {
+  name: "Custom Reel",
+  canvas: "9:16",
+  clips: [
+    { duration: 3, text: { content: "Hello!", style: "title", position: "center" } },
+    { duration: 5, media: { id: "video-123" } },
+    { duration: 3, media: { generate: "sunrise timelapse" } },  // AI-generated
+    { duration: 3, text: { content: "Follow!", style: "title", position: "center" } }
+  ],
+  audio: {
+    music: { generate: "lo-fi chill beats" },
+    voiceover: { text: "Welcome to my channel", voice: "alloy" }
+  }
+};
+
+const result = await executeScript(script);
+```
+
+### Content Analysis
+
+Understand video and audio content before editing. Useful for smart editing decisions.
+
+```typescript
+import { extractFrames, analyzeVideoContent, analyzeAudio, detectSilence, getMediaSummary } from '@/lib/ai-editor';
+
+// Extract frames to "see" the video (for AI analysis)
+const frames = await extractFrames('media-id', 5);
+// Returns: [{ time: 0.5, dataUrl: 'data:image/jpeg;base64,...', width, height }]
+
+// Get AI analysis of video content (requires Gemini API key)
+const analysis = await analyzeVideoContent('media-id');
+// Returns: {
+//   scenes: [{ startTime, endTime, description, suggestedAction }],
+//   suggestedCuts: [3.5, 7.2, 11.0],  // Good cut points
+//   pacing: 'medium',
+//   dominantColors: ['blue', 'white'],
+//   hasText: false,
+//   hasFaces: true
+// }
+
+// Analyze audio for speech and silence
+const audio = await analyzeAudio('media-id');
+// Returns: { hasSpeech: true, silenceSegments: [...], beatTimestamps, estimatedBpm }
+
+// Quick silence detection for auto-cutting
+const silences = await detectSilence('media-id');
+// Returns: [{ start: 2.5, end: 3.1 }, { start: 8.0, end: 8.5 }]
+
+// Get a quick media summary
+const summary = await getMediaSummary('media-id');
+// Returns: { type, duration, hasAudio, hasSpeech, silentSegments, frameCount }
+```
+
+### Batch Actions
+
+Execute multiple actions efficiently with error handling.
+
+```typescript
+import { executeActions } from '@/lib/ai-editor';
+
+const results = await executeActions([
+  { type: 'add_clip_to_timeline', params: { mediaId: 'vid-1', startTime: 0 } },
+  { type: 'add_text', params: { content: 'Hello', startTime: 0, duration: 3 } },
+  { type: 'add_clip_to_timeline', params: { mediaId: 'vid-2', startTime: 5 } },
+], { stopOnError: false });
+
+// Check for failures
+const failures = results.filter(r => !r.success);
+```
+
 ### Example: Complete AI Editing Workflow
 
 ```typescript
@@ -348,4 +443,36 @@ if (music.success) {
 // 5. Check the result
 const timeline = getTimelineState();
 console.log(`Timeline has ${timeline.tracks.length} tracks`);
+```
+
+### Example: Smart Reel Creation Workflow
+
+```typescript
+import {
+  getMediaList,
+  analyzeVideoContent,
+  detectSilence,
+  createReel,
+  extractFrames
+} from '@/lib/ai-editor';
+
+// 1. Understand the content
+const media = getMediaList();
+const mainVideo = media.find(m => m.type === 'video');
+
+// 2. Analyze to make smart decisions
+const analysis = await analyzeVideoContent(mainVideo.id);
+const silences = await detectSilence(mainVideo.id);
+
+// 3. Create a reel using the best parts
+const result = await createReel({
+  template: "hook-content-cta",
+  name: "Auto-Generated Reel",
+  clips: [
+    { text: "Watch this!" },
+    { mediaId: mainVideo.id },  // Will use the video
+    { text: "Follow for more!" }
+  ],
+  music: { generate: analysis.pacing === 'fast' ? "energetic pop" : "chill lo-fi" }
+});
 ```
