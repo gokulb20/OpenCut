@@ -80,6 +80,34 @@
  *    ```
  *
  * ============================================================================
+ * VIDEO REPLICATION PIPELINE (for cloning videos with your character)
+ * ============================================================================
+ *
+ * Replicate any video with your AI mascot character:
+ *
+ * ```typescript
+ * import { replicateVideo, analyzeForReplication } from '@/lib/ai-editor';
+ *
+ * // First, analyze the video to see what's needed
+ * const analysis = await analyzeForReplication('reference-video-id');
+ * console.log(analysis.summary);
+ * // Duration: 15.0s, Scenes: 5, Pacing: fast
+ * // Required poses: standing, waving, dancing
+ *
+ * // Then replicate with your character
+ * const result = await replicateVideo({
+ *   videoMediaId: 'reference-video-id',
+ *   characterImage: 'my-character-id',
+ *   characterBasePrompt: 'A cute robot mascot with big eyes',
+ *   options: {
+ *     style: 'anime',
+ *     generateMissingPoses: true,
+ *     onProgress: (stage, progress, msg) => console.log(msg)
+ *   }
+ * });
+ * ```
+ *
+ * ============================================================================
  */
 
 // State readers
@@ -192,3 +220,93 @@ export type {
   VideoContentAnalysis,
   AudioAnalysis,
 } from "./analysis";
+
+// ============================================================================
+// VIDEO REPLICATION PIPELINE - Clone videos with your character
+// ============================================================================
+
+// Main replication functions
+export {
+  replicateVideo,
+  createReplicationPlan,
+  executeReplicationPlan,
+  analyzeForReplication,
+  summarizeReplicationPlan,
+} from "./video-replicator";
+
+export type {
+  ReplicationOptions,
+  ReplicationResult,
+  ReplicationPlan,
+  SceneReplicationPlan,
+  ReplicationProgressCallback,
+  ReplicationStage,
+} from "./video-replicator";
+
+// Video analysis
+export {
+  analyzeVideoForReplication,
+  summarizeBreakdown,
+  getRequiredPoses,
+} from "./video-analyzer";
+
+export type {
+  VideoBreakdown,
+  VideoScene,
+} from "./video-analyzer";
+
+// Character management
+export {
+  createPoseLibrary,
+  generateCharacterPose,
+  addPoseToLibrary,
+  findBestPose,
+  getAvailablePoseTypes,
+  savePoseLibrary,
+  loadPoseLibrary,
+  listPoseLibraries,
+  POSE_PROMPTS,
+} from "./character-manager";
+
+export type {
+  CharacterPoseLibrary,
+  CharacterPose,
+  GeneratePoseParams,
+} from "./character-manager";
+
+// Motion generation (Domo AI)
+export {
+  generateMotionVideo,
+  transferMotion,
+  generateMotionVideoSmart,
+  getMotionPrompt,
+  buildMotionPromptFromAnalysis,
+  MOTION_PROMPTS,
+  STYLE_DESCRIPTIONS,
+} from "./domo-service";
+
+export type {
+  DomoGenerationParams,
+  DomoTransferParams,
+  DomoResult,
+  DomoStyle,
+} from "./domo-service";
+
+// Motion extraction (MediaPipe)
+export {
+  extractPoseFromFrame,
+  extractPosesFromFrames,
+  analyzeMotionFromPoses,
+  classifyMotion,
+  comparePoses,
+  findMostSimilarPose,
+  drawPoseOnCanvas,
+  disposePoseExtractor,
+  POSE_LANDMARKS,
+} from "./motion-extractor";
+
+export type {
+  Pose,
+  PoseLandmark,
+  MotionAnalysis,
+} from "./motion-extractor";

@@ -32,6 +32,13 @@ export const AI_PROVIDERS: AIProvider[] = [
     docsUrl: "https://ai.google.dev/",
   },
   {
+    id: "domo",
+    name: "Domo AI",
+    category: "video",
+    description: "Character animation and motion generation from images",
+    docsUrl: "https://www.domoai.app/",
+  },
+  {
     id: "kling",
     name: "Kling AI",
     category: "video",
