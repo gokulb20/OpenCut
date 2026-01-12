@@ -166,3 +166,186 @@ const { tracks, addTrack, updateTrack } = useTimelineStore();
 import { processVideo } from '@/lib/ffmpeg-utils';
 const processedVideo = await processVideo(inputFile, options);
 ```
+
+## AI Video Editor API
+
+OpenCut includes an AI Editor API that allows Claude Code to programmatically edit videos. This enables AI-driven video editing where Claude can read the timeline state, execute editing actions, and generate content using external AI APIs.
+
+### Reading Editor State
+
+```typescript
+import { getTimelineState, getMediaList, getProjectInfo, getPlaybackState } from '@/lib/ai-editor';
+
+// Get all tracks and elements
+const timeline = getTimelineState();
+// Returns: { tracks, totalDuration, selectedElements, snappingEnabled, rippleEditingEnabled }
+
+// Get imported media files
+const media = getMediaList();
+// Returns: [{ id, name, type, duration, width, height, url, thumbnailUrl }]
+
+// Get project settings
+const project = getProjectInfo();
+// Returns: { id, name, canvas, fps, background }
+
+// Get playback state
+const playback = getPlaybackState();
+// Returns: { isPlaying, currentTime, duration, volume, speed, muted }
+```
+
+### Editing Actions
+
+```typescript
+import { addClip, addText, splitClip, trimClip, deleteClip, seekTo, play, pause } from '@/lib/ai-editor';
+
+// Add a media clip to the timeline
+await addClip('media-id', 0);  // mediaId, startTime
+await addClip('media-id', 5, { trackId: 'track-id', duration: 10 });
+
+// Add text overlay
+await addText('Hello World', 0, 5);  // content, startTime, duration
+await addText('Styled Text', 2, 3, {
+  fontSize: 64,
+  color: '#FFFFFF',
+  fontWeight: 'bold',
+  x: 0,
+  y: -100
+});
+
+// Split a clip at a specific time
+await splitClip('track-id', 'element-id', 2.5, 'both');  // keeps both halves
+await splitClip('track-id', 'element-id', 2.5, 'left');  // keeps left half
+await splitClip('track-id', 'element-id', 2.5, 'right'); // keeps right half
+
+// Trim a clip
+await trimClip('track-id', 'element-id', { trimStart: 1, trimEnd: 2 });
+await trimClip('track-id', 'element-id', { duration: 5 });
+
+// Delete a clip
+await deleteClip('track-id', 'element-id');
+
+// Playback control
+await seekTo(10);  // Jump to 10 seconds
+await play();
+await pause();
+```
+
+### AI Content Generation
+
+Generate videos, music, and voiceovers using external AI APIs. API keys must be configured in Settings > AI Settings.
+
+```typescript
+import { generateVideo, generateMusic, generateVoiceover, analyzeVideo } from '@/lib/ai-editor';
+
+// Generate a video clip
+const video = await generateVideo({
+  prompt: 'A sunset over the ocean with waves crashing',
+  duration: 5,
+  aspectRatio: '16:9'
+}, 'fal');  // provider: 'fal', 'kling', 'runway', 'gemini'
+
+if (video.success) {
+  // video.mediaId - ID of the imported media
+  await addClip(video.mediaId, 0);
+}
+
+// Generate background music
+const music = await generateMusic({
+  prompt: 'Upbeat electronic music for a tech video',
+  duration: 30,
+  mood: 'energetic'
+}, 'fal');
+
+// Generate voiceover
+const voice = await generateVoiceover({
+  text: 'Welcome to our product demonstration',
+  voice: 'alloy',
+  speed: 1.0
+}, 'openai');
+
+// Analyze video content
+const analysis = await analyzeVideo({
+  mediaId: 'media-id',
+  prompt: 'Describe the main scenes and suggest edit points'
+});
+```
+
+### API Key Configuration
+
+```typescript
+import { setApiKey, hasApiKey, getApiKeys } from '@/lib/ai-editor';
+
+// Set API keys programmatically
+setApiKey('fal', 'your-fal-api-key');
+setApiKey('gemini', 'your-gemini-api-key');
+setApiKey('openai', 'your-openai-api-key');
+setApiKey('elevenlabs', 'your-elevenlabs-api-key');
+
+// Check if a provider is configured
+if (hasApiKey('fal')) {
+  // Ready to generate content
+}
+
+// Get all configured keys
+const keys = getApiKeys();
+```
+
+### Supported AI Providers
+
+**Video Generation:**
+- `fal` - FAL.ai (access to Kling, SDXL, etc.)
+- `kling` - Kling AI
+- `runway` - Runway Gen-3
+- `gemini` - Google Veo 2
+
+**Music Generation:**
+- `fal` - FAL.ai (MusicGen)
+- `suno` - Suno AI
+
+**Voice Generation:**
+- `openai` - OpenAI TTS
+- `elevenlabs` - ElevenLabs
+
+### Example: Complete AI Editing Workflow
+
+```typescript
+import {
+  getMediaList,
+  addClip,
+  addText,
+  generateMusic,
+  splitClip,
+  trimClip,
+  getTimelineState
+} from '@/lib/ai-editor';
+
+// 1. Get available media
+const media = getMediaList();
+const videoClip = media.find(m => m.type === 'video');
+
+// 2. Add video to timeline
+if (videoClip) {
+  await addClip(videoClip.id, 0);
+}
+
+// 3. Add title text
+await addText('My Video', 0, 3, {
+  fontSize: 72,
+  color: '#FFFFFF',
+  fontWeight: 'bold',
+  y: -150
+});
+
+// 4. Generate and add background music
+const music = await generateMusic({
+  prompt: 'Calm ambient music',
+  duration: 30
+});
+if (music.success) {
+  await addClip(music.mediaId, 0);
+}
+
+// 5. Check the result
+const timeline = getTimelineState();
+console.log(`Timeline has ${timeline.tracks.length} tracks`);
+```
